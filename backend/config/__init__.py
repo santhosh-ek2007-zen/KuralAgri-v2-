@@ -1,0 +1,1 @@
+# KuralAgri Django project config
