@@ -64,14 +64,45 @@ class PriceRecommendationView(APIView):
 
     def post(self, request):
         crop_id = request.data.get('crop')
+        if not crop_id:
+            return Response(
+                {'error': {'code': 'MISSING_CROP', 'message': 'crop ID is required.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         grade = request.data.get('grade', 'A')
         region_id = request.data.get('region')
-        quantity_kg = Decimal(str(request.data.get('quantity_kg', '100.00')))
-        mvp = Decimal(str(request.data['minimum_viable_price'])) if 'minimum_viable_price' in request.data else None
-        ceiling = Decimal(str(request.data['buyer_ceiling'])) if 'buyer_ceiling' in request.data else None
+
+        # quantity_kg may arrive as string or number from the frontend
+        try:
+            quantity_kg = Decimal(str(request.data.get('quantity_kg', '100.00')))
+        except Exception:
+            quantity_kg = Decimal('100.00')
+
+        # harvest_datetime is sent by the frontend for context but not needed
+        # by the pricing engine directly — it is used to compute remaining
+        # shelf life on the listing model when the listing is later created.
+        # We accept it here and silently discard it.
+
+        mvp = (
+            Decimal(str(request.data['minimum_viable_price']))
+            if 'minimum_viable_price' in request.data
+            else None
+        )
+        ceiling = (
+            Decimal(str(request.data['buyer_ceiling']))
+            if 'buyer_ceiling' in request.data
+            else None
+        )
 
         crop = get_object_or_404(Crop, id=crop_id)
         region = get_object_or_404(Region, id=region_id) if region_id else Region.objects.first()
+
+        if region is None:
+            return Response(
+                {'error': {'code': 'NO_REGION', 'message': 'No region found. Please seed region data.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         rec = PricingService.get_price_recommendation(
             crop=crop,
@@ -79,7 +110,7 @@ class PriceRecommendationView(APIView):
             region=region,
             quantity_kg=quantity_kg,
             minimum_viable_price=mvp,
-            buyer_ceiling=ceiling
+            buyer_ceiling=ceiling,
         )
         return Response(PriceRecommendationSerializer(rec).data)
 

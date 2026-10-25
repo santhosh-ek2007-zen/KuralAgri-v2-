@@ -200,7 +200,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
-  if (token) {
+  if (token && endpoint !== '/auth/login/' && endpoint !== '/auth/register/') {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
@@ -249,6 +249,15 @@ export const api = {
   async getListings(): Promise<Listing[]> {
     return request<Listing[]>('/marketplace/listings/');
   },
+  // Buyer browse: only ACTIVE listings
+  async getActiveListings(): Promise<Listing[]> {
+    return request<Listing[]>('/marketplace/listings/');
+  },
+  // Admin monitoring: all listings across all statuses
+  async getAllListings(): Promise<Listing[]> {
+    return request<Listing[]>('/marketplace/listings/?all=true');
+  },
+
   async createListing(payload: {
     crop: string;
     grade: string;
@@ -302,7 +311,7 @@ export const api = {
     harvest_datetime: string;
     quantity_kg: number | string;
   }): Promise<PriceRecommendation> {
-    return request<PriceRecommendation>('/intelligence/recommend-price/', {
+    return request<PriceRecommendation>('/intelligence/price-recommendation/', {
       method: 'POST',
       body: JSON.stringify(params),
     });

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { api, BuyerOrder, Lot, PriceBreakdown, Crop, Region } from '../api';
+import { api, BuyerOrder, Lot, PriceBreakdown, Crop, Region, Listing } from '../api';
 import { ShoppingBag, Search, CheckCircle, ArrowRight, ShieldCheck, DollarSign, Users, Truck, AlertCircle } from 'lucide-react';
 
 export const BuyerView: React.FC = () => {
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
+  const [availableListings, setAvailableListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Post Requirement Modal
@@ -38,20 +39,34 @@ export const BuyerView: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [orderRes, cropRes, regRes] = await Promise.all([
+      const [orderRes, cropRes, regRes, listingRes] = await Promise.all([
         api.getBuyerOrders(),
         api.getCrops(),
         api.getRegions(),
+        api.getActiveListings().catch(() => [] as Listing[]),
       ]);
       setOrders(orderRes);
       setCrops(cropRes);
       setRegions(regRes);
+      setAvailableListings(listingRes);
       if (cropRes.length > 0) setSelectedCrop(cropRes[0].id);
     } catch (err) {
       console.error('Failed to load buyer data:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSourceListing = (listing: Listing) => {
+    const cropId = typeof listing.crop === 'object' ? listing.crop.id : listing.crop;
+    if (cropId) setSelectedCrop(cropId);
+    if (listing.grade === 'A' || listing.grade === 'B' || listing.grade === 'C') {
+      setSelectedGrade(listing.grade);
+    }
+    const qty = listing.available_kg || listing.quantity_kg || '100';
+    setQuantityKg(qty);
+    setMinQty(String(Math.max(10, Math.floor(parseFloat(qty) * 0.8))));
+    setShowOrderModal(true);
   };
 
   const handlePostOrder = async () => {
@@ -129,7 +144,7 @@ export const BuyerView: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px' }}>
-      
+
       {/* Buyer Header Banner */}
       <div style={{
         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
@@ -164,8 +179,119 @@ export const BuyerView: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Available Produce from Farmers ─────────────────────────────── */}
+      <div className="card" style={{ padding: '24px', marginBottom: '28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '1.2rem', color: 'var(--slate-900)' }}>
+              🌾 Available Produce from Farmers
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--slate-500)' }}>
+              Live ACTIVE listings — graded, shelf-life checked, and ready for lot matching.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span className="badge badge-success">{availableListings.length} Available</span>
+            <button className="btn btn-secondary btn-sm" onClick={loadData}>Refresh</button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '32px', color: 'var(--slate-500)' }}>Loading available produce…</div>
+        ) : availableListings.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px', border: '1px dashed var(--slate-300)', borderRadius: 'var(--radius-md)' }}>
+            <p style={{ color: 'var(--slate-500)', marginBottom: '8px' }}>No active farmer listings right now.</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--slate-400)' }}>Post a sourcing requirement below — the matching engine will notify you when supply becomes available.</p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Farmer</th>
+                  <th>Crop &amp; Grade</th>
+                  <th>Available Qty</th>
+                  <th>Location</th>
+                  <th>Shelf Life Left</th>
+                  <th>Floor Price</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {availableListings.map((l) => {
+                  const cropName = typeof l.crop === 'object' ? l.crop.name : l.crop;
+                  const farmerName = l.farmer?.user?.full_name || 'Farmer';
+                  const shelfHours = parseFloat(l.remaining_shelf_life_hours || '10.00');
+                  const isExpiring = shelfHours <= 12;
+                  const emoji = cropName === 'Tomato' ? '🍅' : cropName === 'Banana' ? '🍌' : cropName === 'Brinjal' ? '🍆' : cropName === 'Green Chilli' ? '🌶️' : '🧅';
+
+                  return (
+                    <tr key={l.id}>
+                      <td>
+                        <div style={{ fontWeight: 600, color: 'var(--slate-900)' }}>{farmerName}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>
+                          {l.self_delivery ? '🚗 Self-delivery' : '📦 Hub pickup'}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>{emoji}</span>
+                          <div>
+                            <strong>{cropName}</strong>
+                            <span className="badge badge-neutral" style={{ marginLeft: '6px' }}>Grade {l.grade}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="tabular">
+                        <strong>{l.available_kg} kg</strong>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>of {l.quantity_kg} kg total</div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{l.village}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>{l.district}</div>
+                      </td>
+                      <td>
+                        <span style={{
+                          fontWeight: 700,
+                          color: isExpiring ? 'var(--amber-700)' : 'var(--primary-700)',
+                          fontSize: '0.9rem',
+                        }}>
+                          ⏱ {shelfHours.toFixed(1)}h
+                        </span>
+                        {isExpiring && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', fontWeight: 600 }}>Urgent — use soon</div>
+                        )}
+                      </td>
+                      <td className="tabular">
+                        {(l as any).price_recommendation?.floor_price ? (
+                          <span style={{ fontWeight: 700, color: 'var(--primary-700)' }}>
+                            ₹{(l as any).price_recommendation.floor_price}/kg
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--slate-400)' }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleSourceListing(l)}
+                          title="Post a requirement matching this produce"
+                        >
+                          <ShoppingBag size={13} /> Source This
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Sourcing Requirements Table */}
       <div className="card" style={{ padding: '24px', marginBottom: '32px' }}>
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div>
             <h2 style={{ fontSize: '1.2rem', color: 'var(--slate-900)' }}>Your Sourcing Requirements</h2>
@@ -307,7 +433,7 @@ export const BuyerView: React.FC = () => {
                 Contributing Smallholders ({matchedBreakdown.contributors.length} Farmers)
               </h3>
             </div>
-            
+
             <div className="table-container">
               <table className="data-table">
                 <thead>

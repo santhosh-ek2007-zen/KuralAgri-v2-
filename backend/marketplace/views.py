@@ -33,6 +33,12 @@ class ListingListCreateView(generics.ListCreateAPIView):
         if user.is_authenticated and self.request.query_params.get('mine') == 'true':
             return qs.filter(farmer__user=user)
 
+        # Admin or staff requesting all listings for monitoring dashboard
+        is_admin = user.is_authenticated and (user.is_staff or getattr(user, 'role', '') == 'ADMIN')
+        if is_admin and self.request.query_params.get('all') == 'true':
+            return qs.order_by('-created_at')
+
+        # Default: only ACTIVE listings (for buyers and public browse)
         # Lazy sweep shelf-life for active listings
         active_listings = qs.filter(status='ACTIVE')
         for l in active_listings[:20]:
@@ -40,6 +46,7 @@ class ListingListCreateView(generics.ListCreateAPIView):
             l.save(update_fields=['remaining_shelf_life_hours', 'status'])
 
         return qs.filter(status='ACTIVE')
+
 
     def perform_create(self, serializer):
         user = self.request.user

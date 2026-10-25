@@ -40,14 +40,63 @@ class DemandForecastSerializer(serializers.ModelSerializer):
         ]
 
 
+CONFIDENCE_TO_PCT = {'HIGH': 90, 'MEDIUM': 72, 'LOW': 50}
+
+
 class PriceRecommendationSerializer(serializers.ModelSerializer):
-    crop_name = serializers.CharField(source='crop.name', read_only=True)
+    """
+    Returns the shape expected by the FarmerView frontend component:
+      price_range        : [min_str, max_str]
+      recommended_price  : midpoint string
+      mandi_benchmark    : benchmark_price field
+      floor_price        : floor_price field
+      confidence_pct     : numeric (0-100)
+      explanation_bullets: flat list of human-readable strings
+    """
+    price_range = serializers.SerializerMethodField()
+    recommended_price = serializers.SerializerMethodField()
+    mandi_benchmark = serializers.SerializerMethodField()
+    confidence_pct = serializers.SerializerMethodField()
+    explanation_bullets = serializers.SerializerMethodField()
 
     class Meta:
         model = PriceRecommendation
         fields = [
-            'id', 'crop', 'crop_name', 'grade', 'region',
-            'recommended_min', 'recommended_max', 'benchmark_price',
-            'floor_price', 'minimum_viable_price', 'buyer_ceiling',
-            'confidence', 'explanation', 'summary', 'created_at'
+            'id', 'crop', 'grade', 'region',
+            'floor_price',
+            'recommended_price',
+            'price_range',
+            'mandi_benchmark',
+            'confidence_pct',
+            'explanation_bullets',
+            'summary',
+            'created_at',
         ]
+
+    def get_price_range(self, obj):
+        return [str(obj.recommended_min), str(obj.recommended_max)]
+
+    def get_recommended_price(self, obj):
+        mid = (obj.recommended_min + obj.recommended_max) / 2
+        return str(round(mid, 2))
+
+    def get_mandi_benchmark(self, obj):
+        return str(obj.benchmark_price)
+
+    def get_confidence_pct(self, obj):
+        return CONFIDENCE_TO_PCT.get(obj.confidence, 72)
+
+    def get_explanation_bullets(self, obj):
+        bullets = []
+        for item in (obj.explanation or []):
+            if isinstance(item, dict):
+                factor = item.get('factor', '')
+                effect = item.get('effect', '')
+                detail = item.get('detail', '')
+                if factor and effect:
+                    bullets.append(f"{factor}: {effect} — {detail}" if detail else f"{factor}: {effect}")
+                elif detail:
+                    bullets.append(detail)
+            elif isinstance(item, str):
+                bullets.append(item)
+        return bullets

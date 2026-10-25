@@ -39,13 +39,14 @@ export function App() {
   };
 
   const handleResetDemo = async () => {
-    if (!window.confirm("Are you sure you want to reset demo data? This will restore all §16 tables to their initial demo state.")) {
+    if (!window.confirm("Are you sure you want to reset demo data? This will clear all produce listings across Farmer, Buyer, and Admin views.")) {
       return;
     }
     try {
       setIsResetting(true);
       const res = await api.resetDemoData();
-      alert(res.message || "Demo data restored successfully.");
+      localStorage.removeItem('kuralagri_token');
+      alert(res.message || "Demo data restored successfully. All listings cleared.");
       window.location.reload();
     } catch (err: any) {
       alert(`Reset error: ${err.message}`);

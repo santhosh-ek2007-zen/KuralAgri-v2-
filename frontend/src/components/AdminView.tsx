@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, Lot, PriceBreakdown } from '../api';
+import { api, Lot, PriceBreakdown, Listing } from '../api';
 import { LeafletRouteMap } from './LeafletRouteMap';
 import {
   TrendingUp,
@@ -47,6 +47,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentTab, onTabChange })
   // Ledger entries
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
 
+  // All farmer listings (admin monitoring)
+  const [allListings, setAllListings] = useState<Listing[]>([]);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -54,12 +57,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentTab, onTabChange })
   const loadData = async () => {
     try {
       setLoading(true);
-      const [lotsRes, ledgerRes] = await Promise.all([
+      const [lotsRes, ledgerRes, listingsRes] = await Promise.all([
         api.getLots(),
         api.getLedgerEntries().catch(() => []),
+        api.getAllListings().catch(() => [] as Listing[]),
       ]);
       setLots(lotsRes);
       setLedgerEntries(ledgerRes);
+      setAllListings(listingsRes);
       if (lotsRes.length > 0 && !selectedLot) {
         setSelectedLot(lotsRes[0]);
       }
@@ -208,7 +213,120 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentTab, onTabChange })
         </div>
       </div>
 
-      {/* Main Mode View based on tab */}
+      {/* ── Farmer Listings Monitor ──────────────────────────────────── */}
+      {currentTab === 'admin_dashboard' && (
+        <div className="card" style={{ padding: '24px', marginBottom: '28px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.2rem', color: 'var(--slate-900)' }}>🌾 Farmer Produce Listings</h2>
+              <p style={{ fontSize: '0.8rem', color: 'var(--slate-500)' }}>
+                All listings across all statuses — monitor supply pipeline and shelf-life urgency.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span className="badge badge-neutral">{allListings.length} Total</span>
+              <span className="badge badge-success">{allListings.filter(l => l.status === 'ACTIVE').length} Active</span>
+              <span className="badge badge-warning">{allListings.filter(l => l.status === 'RESERVED').length} Reserved</span>
+              <button className="btn btn-secondary btn-sm" onClick={loadData}>Refresh</button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '32px', color: 'var(--slate-500)' }}>Loading listings…</div>
+          ) : allListings.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px', border: '1px dashed var(--slate-300)', borderRadius: 'var(--radius-md)', color: 'var(--slate-500)' }}>
+              No farmer listings yet. Ask a farmer to list produce.
+            </div>
+          ) : (
+            <div className="table-container" style={{ marginBottom: '0' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Farmer</th>
+                    <th>Crop &amp; Grade</th>
+                    <th>Qty (Avail / Total)</th>
+                    <th>Location</th>
+                    <th>Shelf Life</th>
+                    <th>Floor Price</th>
+                    <th>Status</th>
+                    <th>Listed At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allListings.map((l) => {
+                    const cropName = typeof l.crop === 'object' ? l.crop.name : l.crop;
+                    const farmerName = l.farmer?.user?.full_name || 'Farmer';
+                    const shelfHours = parseFloat(l.remaining_shelf_life_hours || '0');
+                    const isExpiring = shelfHours > 0 && shelfHours <= 12;
+                    const emoji = cropName === 'Tomato' ? '🍅' : cropName === 'Banana' ? '🍌' : cropName === 'Brinjal' ? '🍆' : cropName === 'Green Chilli' ? '🌶️' : '🧅';
+                    const listedAt = new Date(l.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
+
+                    return (
+                      <tr key={l.id}>
+                        <td>
+                          <div style={{ fontWeight: 600, color: 'var(--slate-900)' }}>{farmerName}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>
+                            {l.self_delivery ? '🚗 Self-delivery' : '📦 Hub pickup'}
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                            <span style={{ fontSize: '1.1rem' }}>{emoji}</span>
+                            <div>
+                              <strong>{cropName}</strong>
+                              <span className="badge badge-neutral" style={{ marginLeft: '6px' }}>Grade {l.grade}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="tabular">
+                          <strong>{l.available_kg} kg</strong>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>of {l.quantity_kg} kg</div>
+                        </td>
+                        <td>
+                          <div>{l.village}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{l.district}</div>
+                        </td>
+                        <td>
+                          {shelfHours > 0 ? (
+                            <span style={{ fontWeight: 700, color: isExpiring ? 'var(--amber-700)' : 'var(--primary-700)' }}>
+                              ⏱ {shelfHours.toFixed(1)}h
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--slate-400)' }}>—</span>
+                          )}
+                          {isExpiring && (
+                            <div style={{ fontSize: '0.68rem', color: 'var(--amber-600)', fontWeight: 600 }}>Urgent!</div>
+                          )}
+                        </td>
+                        <td className="tabular">
+                          {(l as any).price_recommendation?.floor_price ? (
+                            <span style={{ fontWeight: 700, color: 'var(--primary-700)' }}>
+                              ₹{(l as any).price_recommendation.floor_price}/kg
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--slate-400)' }}>—</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge ${
+                            l.status === 'ACTIVE' ? 'badge-success' :
+                            l.status === 'RESERVED' ? 'badge-warning' :
+                            l.status === 'IN_LOT' ? 'badge-info' :
+                            l.status === 'EXPIRED' ? 'badge-danger' : 'badge-neutral'
+                          }`}>{l.status}</span>
+                        </td>
+                        <td style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>{listedAt}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Active Lots Pipeline ─────────────────────────────────────────── */}
       {currentTab === 'admin_dashboard' && (
         <div className="card" style={{ padding: '24px', marginBottom: '28px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>

@@ -21,6 +21,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--reset", action="store_true", help="Wipe transactional tables before seeding")
+        parser.add_argument("--no-listings", action="store_true", help="Do not seed active listings (clean slate for demo)")
 
     def handle(self, *args, **options):
         if options["reset"]:
@@ -39,7 +40,11 @@ class Command(BaseCommand):
             buyers = self._seed_buyers()
             vehicles = self._seed_vehicles(hubs, regions)
             self._seed_admin()
-            listings = self._seed_listings(farmers, crops)
+            if not options.get("no_listings"):
+                listings = self._seed_listings(farmers, crops)
+            else:
+                listings = {}
+                self.stdout.write("  [OK] Listings skipped (--no-listings)")
             self._seed_buyer_orders(buyers, crops)
             self._seed_historical_settled_lots(farmers, buyers, crops, hubs)
 

@@ -50,6 +50,7 @@ export const FarmerView: React.FC = () => {
   const handleFetchRecommendation = async () => {
     try {
       setLoadingRec(true);
+      setRecommendation(null); // clear stale data before each attempt
       const now = new Date();
       now.setHours(now.getHours() - harvestHoursAgo);
       const harvestDt = now.toISOString();
@@ -64,9 +65,11 @@ export const FarmerView: React.FC = () => {
         quantity_kg: quantityKg,
       });
       setRecommendation(rec);
-      setStep(3);
+      setStep(3);        // advance ONLY on success
     } catch (err: any) {
-      alert(`Error computing price recommendation: ${err.message}`);
+      setStep(3);        // show Step 3 error panel so user can retry
+      // recommendation stays null → triggers the error state UI
+      console.error('Price recommendation error:', err);
     } finally {
       setLoadingRec(false);
     }
@@ -450,15 +453,44 @@ export const FarmerView: React.FC = () => {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '24px' }}>
                   <button className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
-                  <button className="btn btn-primary" onClick={handleFetchRecommendation} disabled={loadingRec}>
-                    {loadingRec ? 'Analyzing Price...' : 'Get Price Intelligence'} <ArrowRight size={16} />
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleFetchRecommendation}
+                    disabled={loadingRec || !selectedCrop}
+                  >
+                    {loadingRec ? 'Analyzing Price…' : 'Get Price Intelligence'} <ArrowRight size={16} />
                   </button>
                 </div>
               </div>
             )}
 
+            {/* Step 3: loading spinner while price is being fetched */}
+            {step === 3 && loadingRec && (
+              <div style={{ textAlign: 'center', padding: '48px 0' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '12px' }}>⏳</div>
+                <p style={{ color: 'var(--slate-600)', fontWeight: 600 }}>Analyzing market signals…</p>
+                <p style={{ color: 'var(--slate-400)', fontSize: '0.8rem' }}>Computing floor price, demand signals &amp; weather risk</p>
+              </div>
+            )}
+
+            {/* Step 3: error state — fetch completed but recommendation is missing */}
+            {step === 3 && !loadingRec && !recommendation && (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <AlertTriangle size={32} color="var(--amber-600)" style={{ marginBottom: '12px' }} />
+                <p style={{ color: 'var(--slate-700)', fontWeight: 600, marginBottom: '8px' }}>
+                  Could not retrieve price intelligence
+                </p>
+                <p style={{ color: 'var(--slate-500)', fontSize: '0.82rem', marginBottom: '20px' }}>
+                  The server may be starting up or an error occurred. Please try again.
+                </p>
+                <button className="btn btn-primary" onClick={handleFetchRecommendation}>
+                  Retry <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
+
             {/* Step 3: Real-Time Price Intelligence */}
-            {step === 3 && recommendation && (
+            {step === 3 && !loadingRec && recommendation && (
               <div>
                 <div style={{
                   background: 'linear-gradient(135deg, var(--primary-50) 0%, #ffffff 100%)',
